@@ -9,28 +9,33 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def get_info(url, retries=3, timeout=None):
+def get_info(url, session=None, retries=3, timeout=None):
     """
     Takes a video url and returns a dict of video info
     """
-    return extract_info(get_data(url, retries, timeout))
+    return extract_info(get_data(url, session, retries, timeout))
 
 
-def get_data(url, retries=3, timeout=None):
+def get_data(url, session=None, retries=3, timeout=None):
     """
     Takes a video url and returns a dict of the video's complete json data
     """
+    if session is None:
+        ses = requests.Session()
+    else:
+        ses = session
     if timeout:
         end_time = time.monotonic() + timeout
 
+    success = False
     for _ in range(retries+1):
         remaining_time = None
         if timeout:
             remaining_time = end_time - time.monotonic()
 
-        response = requests.get(url,
-                                headers={'accept-language': "en-US,en;q=0.9"},
-                                timeout=remaining_time)
+        response = ses.get(url,
+                            headers={'accept-language': "en-US,en;q=0.9"},
+                            timeout=remaining_time)
 
         if response.status_code != 200:
             logger.warning(f"Got status code {response.status_code} for {url}")
@@ -48,11 +53,19 @@ def get_data(url, retries=3, timeout=None):
         initial_player_response = json.loads(initial_player_response[1])
         initial_data = json.loads(initial_data[1])
 
-        return {'url': url,
-            'ytInitialPlayerResponse': initial_player_response,
-            'ytInitialData': initial_data}
+        success = True
+        break
 
-    raise RetryError(f"Reached maximum retries for {url}")
+    # close locally created session
+    if session is not None:
+        ses.close()
+
+    if success:
+        return {'url': url,
+                'ytInitialPlayerResponse': initial_player_response,
+                'ytInitialData': initial_data}
+    else:
+        raise RetryError(f"Reached maximum retries for {url}")
 
 
 def get_status(data):
@@ -142,28 +155,34 @@ def extract_info(data):
     return ret
 
 
-def get_thumbnail(id, retries=3, timeout=None, format='maxres'):
+def get_thumbnail(id, format='maxres', session=None, retries=3, timeout=None, ):
     """
     Takes a video id and thumbnail format (maxres or hq) and returns the video
     thumbnail as raw byte data
     """
-    if timeout:
-        end_time = time.monotonic() + timeout
-
     if format == 'maxres':
         url = f"https://i.ytimg.com/vi/{id}/maxresdefault.jpg"
-    # maxres is only available for premiere-released videos and live streams
+        # maxres is only available for premiere-released videos and live streams
     elif format == 'hq':
         url = f"https://i.ytimg.com/vi/{id}/hqdefault.jpg"
     else:
         raise Error(f"Unknown thumbnail format '{format}'")
 
+    if session is None:
+        ses = requests.Session()
+    else:
+        ses = session
+    if timeout:
+        end_time = time.monotonic() + timeout
+
+    success = False
     for _ in range(retries+1):
         try:
-            resp = requests.get(url,
+            resp = ses.get(url,
                     timeout=end_time-time.monotonic() if timeout else None)
             if resp.status_code == 200:
-                return resp.content
+                success = True
+                break
 
             logger.warning(f"Got status code {resp.status_code} for {url}")
         # have gotten connection errors fairly often while scraping thumbnails
@@ -171,7 +190,14 @@ def get_thumbnail(id, retries=3, timeout=None, format='maxres'):
             logger.warning(f"Got ConnectionError for {url}")
             pass
 
-    raise RetryError(f"Reached maximum retries for {url}")
+    # close locally created session
+    if session is not None:
+        ses.close()
+
+    if success:
+        return resp.content
+    else:
+        raise RetryError(f"Reached maximum retries for {url}")
 
 
 def get_channel_videos(url, retries=3, timeout=None):
