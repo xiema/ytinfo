@@ -3,3 +3,6 @@ class Error(Exception):
 
 class RetryError(Error):
     """Exceeded maximum number of retries"""
+
+class TimeoutError(Error):
+    """Page load timed out"""

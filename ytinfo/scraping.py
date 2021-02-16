@@ -16,24 +16,32 @@ def get_info(url, session=None, retries=3, timeout=None):
     return extract_info(get_data(url, session, retries, timeout))
 
 
+def _extract_initial_player_response(text):
+    return re.search(r"(?:window\[[\"']ytInitialPlayerResponse[\"']\]|ytInitialPlayerResponse)\s*=\s*({.+?});", text)
+
+def _extract_initial_data(text):
+    return re.search(r"(?:window\s*\[\s*[\"']ytInitialData[\"']\s*\]|ytInitialData)\s*=\s*({.+?})\s*;", text)
+
 def get_data(url, session=None, retries=3, timeout=None):
     """
     Takes a video url and returns a dict of the video's complete json data
     """
     if session is None:
-        ses = requests.Session()
-    else:
-        ses = session
+        with requests.Session() as session:
+            return get_data(url, session, retries, timeout)
+
     if timeout:
         end_time = time.monotonic() + timeout
 
-    success = False
     for _ in range(retries+1):
-        remaining_time = None
         if timeout:
             remaining_time = end_time - time.monotonic()
+            if remaining_time <= 0:
+                raise TimeoutError(f"Timed out while loading {url}")
+        else:
+            remaining_time = None
 
-        response = ses.get(url,
+        response = session.get(url,
                             headers={'accept-language': "en-US,en;q=0.9"},
                             timeout=remaining_time)
 
@@ -41,31 +49,21 @@ def get_data(url, session=None, retries=3, timeout=None):
             logger.warning(f"Got status code {response.status_code} for {url}")
             continue
 
-        initial_player_response = re.search(r"(?:window\[[\"']ytInitialPlayerResponse[\"']\]|ytInitialPlayerResponse)\s*=\s*({.+?});",
-                                            response.text)
-        initial_data = re.search(r"(?:window\s*\[\s*[\"']ytInitialData[\"']\s*\]|ytInitialData)\s*=\s*({.+?})\s*;",
-                                response.text)
+        initial_player_response = _extract_initial_player_response(response.text)
+        initial_data = _extract_initial_data(response.text)
         # check for malformed data
-        if not initial_player_response or not initial_data:
+        if initial_player_response is None or initial_data is None:
             logger.warning(f"Errors on page for {url}")
             continue
 
         initial_player_response = json.loads(initial_player_response[1])
         initial_data = json.loads(initial_data[1])
 
-        success = True
-        break
-
-    # close locally created session
-    if session is not None:
-        ses.close()
-
-    if success:
         return {'url': url,
                 'ytInitialPlayerResponse': initial_player_response,
                 'ytInitialData': initial_data}
-    else:
-        raise RetryError(f"Reached maximum retries for {url}")
+
+    raise RetryError(f"Reached maximum retries for {url}")
 
 
 def get_status(data):
@@ -155,11 +153,15 @@ def extract_info(data):
     return ret
 
 
-def get_thumbnail(id, format='maxres', session=None, retries=3, timeout=None, ):
+def get_thumbnail(id, format='maxres', session=None, retries=3, timeout=None):
     """
     Takes a video id and thumbnail format (maxres or hq) and returns the video
     thumbnail as raw byte data
     """
+    if session is None:
+        with requests.Session() as session:
+            return get_thumbnail(id, format, session, retries, timeout)
+
     if format == 'maxres':
         url = f"https://i.ytimg.com/vi/{id}/maxresdefault.jpg"
         # maxres is only available for premiere-released videos and live streams
@@ -168,21 +170,21 @@ def get_thumbnail(id, format='maxres', session=None, retries=3, timeout=None, ):
     else:
         raise Error(f"Unknown thumbnail format '{format}'")
 
-    if session is None:
-        ses = requests.Session()
-    else:
-        ses = session
     if timeout:
         end_time = time.monotonic() + timeout
 
-    success = False
     for _ in range(retries+1):
+        if timeout is not None:
+            remaining_time = end_time - time.monotonic()
+            if remaining_time <= 0:
+                raise TimeoutError(f"Timed out while loading {url}")
+        else:
+            remaining_time = None
+
         try:
-            resp = ses.get(url,
-                    timeout=end_time-time.monotonic() if timeout else None)
+            resp = session.get(url, timeout=remaining_time)
             if resp.status_code == 200:
-                success = True
-                break
+                return resp.content
 
             logger.warning(f"Got status code {resp.status_code} for {url}")
         # have gotten connection errors fairly often while scraping thumbnails
@@ -190,49 +192,80 @@ def get_thumbnail(id, format='maxres', session=None, retries=3, timeout=None, ):
             logger.warning(f"Got ConnectionError for {url}")
             pass
 
-    # close locally created session
-    if session is not None:
-        ses.close()
-
-    if success:
-        return resp.content
-    else:
-        raise RetryError(f"Reached maximum retries for {url}")
+    raise RetryError(f"Reached maximum retries for {url}")
 
 
-def get_channel_videos(url, retries=3, timeout=None):
+def get_channel_videos(url, session=None, retries=3, timeout=None):
     """
     Takes a channel url and returns a list of video ids from the main video
     catalog
     """
-    with requests.Session() as ses:
+    if session is None:
+        with requests.Session() as session:
+            return get_channel_videos(url, session, retries, timeout)
 
-        if not url.endswith("/videos"):
-            url = url + "/videos"
+    if not url.endswith("/videos"):
+        url = url + "/videos"
 
-        if timeout:
-            end_time = time.monotonic() + timeout
+    if timeout:
+        end_time = time.monotonic() + timeout
 
-        for _ in range(retries+1):
-            response = ses.get(url,
-                        timeout=end_time-time.monotonic() if timeout else None)
-            if response.status_code == 200:
-                break
-            logger.warning(f"Got status code {response.status_code} for {url}")
+    for _ in range(retries+1):
+        if timeout is not None:
+            remaining_time = end_time - time.monotonic()
+            if remaining_time <= 0:
+                TimeoutError(f"Timed out while loading {url}")
         else:
-            raise RetryError(f"Reached maximum retries for {url}")
+            remaining_time = None
 
-        data = json.loads(re.search(r"(?:window\s*\[\s*[\"']ytInitialData[\"']\s*\]|ytInitialData)\s*=\s*({.+?})\s*;",
-                                    response.text)[1])
-        tabs = data['contents']['twoColumnBrowseResultsRenderer']['tabs']
+        response = session.get(url, timeout=remaining_time)
+        if response.status_code == 200:
+            break
+        logger.warning(f"Got status code {response.status_code} for {url}")
+    else:
+        raise RetryError(f"Reached maximum retries for {url}")
 
-        videos = []
-        for tab in tabs:
-            try:
-                # get first page of videos
-                items = tab['tabRenderer']['content']['sectionListRenderer']\
-                    ['contents'][0]['itemSectionRenderer']['contents'][0]\
-                    ['gridRenderer']['items']
+    data = json.loads(_extract_initial_data(response.text)[1])
+    tabs = data['contents']['twoColumnBrowseResultsRenderer']['tabs']
+
+    videos = []
+    for tab in tabs:
+        try:
+            # get first page of videos
+            items = tab['tabRenderer']['content']['sectionListRenderer']\
+                ['contents'][0]['itemSectionRenderer']['contents'][0]\
+                ['gridRenderer']['items']
+
+            continuation = None
+            for item in items:
+                if 'continuationItemRenderer' not in item:
+                    videos.append(item['gridVideoRenderer']['videoId'])
+                else:
+                    continuation = item
+
+            # get succeeding pages
+            while continuation is not None:
+                token = continuation['continuationItemRenderer']['continuationEndpoint']\
+                                    ['continuationCommand']['token']
+                if timeout is not None:
+                    remaining_time = end_time - time.monotonic()
+                    if remaining_time <= 0:
+                        raise TimeoutError(f"Timed out while loading {url}")
+                else:
+                    remaining_time = None
+
+                response = session.get("https://www.youtube.com/browse_ajax",
+                    headers={'x-youtube-client-name': '1',
+                        'x-youtube-client-version': '2.20201112.04.01'
+                    },
+                    params={'ctoken': token,
+                        'continuation': token,
+                        #'itct': c['clickTrackingParams']
+                    },
+                    timeout=remaining_time)
+                items = json.loads(response.text)[1]['response']\
+                    ['onResponseReceivedActions'][0]['appendContinuationItemsAction']\
+                    ['continuationItems']
 
                 continuation = None
                 for item in items:
@@ -241,31 +274,7 @@ def get_channel_videos(url, retries=3, timeout=None):
                     else:
                         continuation = item
 
-                # get succeeding pages
-                while continuation:
-                    token = continuation['continuationItemRenderer']['continuationEndpoint']\
-                                        ['continuationCommand']['token']
-                    response = ses.get("https://www.youtube.com/browse_ajax",
-                        headers={'x-youtube-client-name': '1',
-                            'x-youtube-client-version': '2.20201112.04.01'
-                        },
-                        params={'ctoken': token,
-                            'continuation': token,
-                            #'itct': c['clickTrackingParams']
-                        },
-                        timeout=end_time-time.monotonic() if timeout else None)
-                    items = json.loads(response.text)[1]['response']\
-                        ['onResponseReceivedActions'][0]['appendContinuationItemsAction']\
-                        ['continuationItems']
+        except KeyError:
+            pass
 
-                    continuation = None
-                    for item in items:
-                        if 'continuationItemRenderer' not in item:
-                            videos.append(item['gridVideoRenderer']['videoId'])
-                        else:
-                            continuation = item
-
-            except KeyError:
-                pass
-
-        return videos
+    return videos
