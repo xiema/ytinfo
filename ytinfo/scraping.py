@@ -214,7 +214,7 @@ def get_channel_videos(url, session=None, retries=3, timeout=None):
         if timeout is not None:
             remaining_time = end_time - time.monotonic()
             if remaining_time <= 0:
-                TimeoutError(f"Timed out while loading {url}")
+                raise TimeoutError(f"Timed out while loading {url}")
         else:
             remaining_time = None
 
