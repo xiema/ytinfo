@@ -115,7 +115,7 @@ def extract_info(data):
     ret['upload_date'] = microformat['uploadDate']
 
     ret['live_content'] = details['isLiveContent']
-    ret['average_rating'] = details['averageRating']
+    ret['average_rating'] = dict_tryget(details, 'averageRating')
     ret['views'] = details['viewCount']
 
     ret['family_safe'] = dict_tryget(microformat ,'isFamilySafe')
