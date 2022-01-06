@@ -113,6 +113,7 @@ def extract_info(data):
     ret['upload_date'] = microformat['uploadDate']
 
     ret['live_content'] = details['isLiveContent']
+    ret['chat_available'] = get_chat_available(data)
     ret['average_rating'] = dict_tryget(details, 'averageRating')
     ret['views'] = details['viewCount']
 
@@ -151,6 +152,14 @@ def extract_info(data):
     ret['end_time'] = dict_tryget(microformat, 'liveBroadcastDetails','endTimestamp')
 
     return ret
+
+
+def get_chat_available(data):
+    if (dict_tryget(data, 'ytInitialData', 'contents', 'twoColumnWatchNextResults', 'conversationBar',
+                    'liveChatRenderer') is not None and str(data).count("Live chat replay is not available") == 0):
+        return True
+    else:
+        return False
 
 
 def get_thumbnail(id, format='maxres', session=None, retries=3, timeout=None):
