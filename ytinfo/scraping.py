@@ -17,7 +17,7 @@ def get_info(url, session=None, retries=3, timeout=None):
 
 
 def _extract_initial_player_response(text):
-    return re.search(r"(?:window\[[\"']ytInitialPlayerResponse[\"']\]|ytInitialPlayerResponse)\s*=\s*({.+?});", text)
+    return re.search(r"(?:window\s*\[\s*[\"']ytInitialPlayerResponse[\"']\s*\]|ytInitialPlayerResponse)\s*=\s*({.+?})\s*;\s*</script", text)
 
 def _extract_initial_data(text):
     return re.search(r"(?:window\s*\[\s*[\"']ytInitialData[\"']\s*\]|ytInitialData)\s*=\s*({.+?})\s*;", text)
