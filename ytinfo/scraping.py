@@ -206,87 +206,99 @@ def get_thumbnail(id, format='maxres', session=None, retries=3, timeout=None):
     raise RetryError(f"Reached maximum retries for {url}")
 
 
-def get_channel_videos(url, session=None, retries=3, timeout=None):
+def get_channel_videos(base_url, session=None, retries=3, timeout=None):
     """
     Takes a channel url and returns a list of video ids from the main video
     catalog
     """
     if session is None:
         with requests.Session() as session:
-            return get_channel_videos(url, session, retries, timeout)
-
-    if not url.endswith("/videos"):
-        url = url + "/videos"
-
-    end_time = None
-    if timeout:
-        end_time = time.monotonic() + timeout
-
-    for _ in range(retries+1):
-        if end_time is not None:
-            remaining_time = end_time - time.monotonic()
-            if remaining_time <= 0:
-                raise TimeoutError(f"Timed out while loading {url}")
-        else:
-            remaining_time = None
-
-        response = session.get(url, timeout=remaining_time)
-        if response.status_code == 200:
-            break
-        logger.warning(f"Got status code {response.status_code} for {url}")
-    else:
-        raise RetryError(f"Reached maximum retries for {url}")
-
-    data = json.loads(_extract_initial_data(response.text)[1])
-    tabs = data['contents']['twoColumnBrowseResultsRenderer']['tabs']
+            return get_channel_videos(base_url, session, retries, timeout)
 
     videos = []
-    for tab in tabs:
-        try:
-            # get first page of videos
-            items = tab['tabRenderer']['content']['sectionListRenderer']\
-                ['contents'][0]['itemSectionRenderer']['contents'][0]\
-                ['gridRenderer']['items']
 
-            continuation = None
-            for item in items:
-                if 'continuationItemRenderer' not in item:
-                    videos.append(item['gridVideoRenderer']['videoId'])
-                else:
-                    continuation = item
+    for url in [
+        base_url + "/videos",
+        base_url + "/streams"
+    ]:
 
-            # get succeeding pages
-            while continuation is not None:
-                token = continuation['continuationItemRenderer']['continuationEndpoint']\
-                                    ['continuationCommand']['token']
-                if end_time is not None:
-                    remaining_time = end_time - time.monotonic()
-                    if remaining_time <= 0:
-                        raise TimeoutError(f"Timed out while loading {url}")
-                else:
-                    remaining_time = None
+        end_time = None
+        if timeout:
+            end_time = time.monotonic() + timeout
 
-                response = session.get("https://www.youtube.com/browse_ajax",
-                    headers={'x-youtube-client-name': '1',
-                        'x-youtube-client-version': '2.20201112.04.01'
-                    },
-                    params={'ctoken': token,
-                        'continuation': token,
-                        #'itct': c['clickTrackingParams']
-                    },
-                    timeout=remaining_time)
-                items = json.loads(response.text)[1]['response']\
-                    ['onResponseReceivedActions'][0]['appendContinuationItemsAction']\
-                    ['continuationItems']
+        for _ in range(retries+1):
+            if end_time is not None:
+                remaining_time = end_time - time.monotonic()
+                if remaining_time <= 0:
+                    raise TimeoutError(f"Timed out while loading {url}")
+            else:
+                remaining_time = None
+
+            response = session.get(url, timeout=remaining_time)
+            if response.status_code == 200:
+                break
+            logger.warning(f"Got status code {response.status_code} for {url}")
+        else:
+            raise RetryError(f"Reached maximum retries for {url}")
+
+        data = json.loads(_extract_initial_data(response.text)[1])
+        tabs = data['contents']['twoColumnBrowseResultsRenderer']['tabs']
+
+        for tab in tabs:
+            try:
+                # get first page of videos
+                items = tab['tabRenderer']['content']['richGridRenderer']['contents']
 
                 continuation = None
                 for item in items:
                     if 'continuationItemRenderer' not in item:
-                        videos.append(item['gridVideoRenderer']['videoId'])
+                        videos.append(item['richItemRenderer']['content']['videoRenderer']['videoId'])
                     else:
                         continuation = item
 
-        except KeyError:
-            pass
+                # get succeeding pages
+                while continuation is not None:
+                    token = continuation['continuationItemRenderer']['continuationEndpoint']\
+                                        ['continuationCommand']['token']
+                    if end_time is not None:
+                        remaining_time = end_time - time.monotonic()
+                        if remaining_time <= 0:
+                            raise TimeoutError(f"Timed out while loading {url}")
+                    else:
+                        remaining_time = None
+
+                    response = session.post("https://www.youtube.com/youtubei/v1/browse",
+                        headers={
+                            'content-type': 'application/json',
+                            'x-youtube-client-name': '1',
+                            'x-youtube-client-version': '2.20230613.01.00'
+                        },
+                        params={
+                            'key': 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8',
+                            'prettyPrint': 'false',
+                        },
+                        json={
+                            'context': {
+                                'client': {
+                                    'clientName': 'WEB',
+                                    'clientVersion': '2.20230613.01.00'
+                                }
+                            },
+                            'continuation': token,
+                        },
+                        timeout=remaining_time)
+
+                    items = json.loads(response.text)['onResponseReceivedActions'][0]\
+                        ['appendContinuationItemsAction']['continuationItems']
+
+                    continuation = None
+                    for item in items:
+                        if 'continuationItemRenderer' not in item:
+                            videos.append(item['richItemRenderer']['content']['videoRenderer']['videoId'])
+                        else:
+                            continuation = item
+
+            except KeyError:
+                pass
 
     return videos
