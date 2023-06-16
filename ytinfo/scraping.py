@@ -30,11 +30,12 @@ def get_data(url, session=None, retries=3, timeout=None):
         with requests.Session() as session:
             return get_data(url, session, retries, timeout)
 
+    end_time = None
     if timeout:
         end_time = time.monotonic() + timeout
 
     for _ in range(retries+1):
-        if timeout:
+        if end_time is not None:
             remaining_time = end_time - time.monotonic()
             if remaining_time <= 0:
                 raise TimeoutError(f"Timed out while loading {url}")
@@ -179,11 +180,12 @@ def get_thumbnail(id, format='maxres', session=None, retries=3, timeout=None):
     else:
         raise Error(f"Unknown thumbnail format '{format}'")
 
+    end_time = None
     if timeout:
         end_time = time.monotonic() + timeout
 
     for _ in range(retries+1):
-        if timeout is not None:
+        if end_time is not None:
             remaining_time = end_time - time.monotonic()
             if remaining_time <= 0:
                 raise TimeoutError(f"Timed out while loading {url}")
@@ -216,11 +218,12 @@ def get_channel_videos(url, session=None, retries=3, timeout=None):
     if not url.endswith("/videos"):
         url = url + "/videos"
 
+    end_time = None
     if timeout:
         end_time = time.monotonic() + timeout
 
     for _ in range(retries+1):
-        if timeout is not None:
+        if end_time is not None:
             remaining_time = end_time - time.monotonic()
             if remaining_time <= 0:
                 raise TimeoutError(f"Timed out while loading {url}")
@@ -256,7 +259,7 @@ def get_channel_videos(url, session=None, retries=3, timeout=None):
             while continuation is not None:
                 token = continuation['continuationItemRenderer']['continuationEndpoint']\
                                     ['continuationCommand']['token']
-                if timeout is not None:
+                if end_time is not None:
                     remaining_time = end_time - time.monotonic()
                     if remaining_time <= 0:
                         raise TimeoutError(f"Timed out while loading {url}")
