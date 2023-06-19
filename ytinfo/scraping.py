@@ -10,11 +10,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def get_info(url, session=None, retries=3, timeout=None):
+def get_info(in_str, session=None, retries=3, timeout=None):
     """
-    Takes a video url and returns a dict of video info
+    Takes a video url or id and returns a dict of video info
     """
-    return extract_info(get_data(url, session, retries, timeout))
+    return extract_info(get_data(in_str, session, retries, timeout))
 
 
 def _extract_initial_player_response(text):
@@ -38,13 +38,18 @@ def _get_videoid(url):
         return m[1]
 
 
-def get_data(url, session=None, retries=3, timeout=None):
+def get_data(in_str, session=None, retries=3, timeout=None):
     """
-    Takes a video url and returns a dict of the video's complete json data
+    Takes a video url or id and returns a dict of the video's complete json data
     """
     if session is None:
         with requests.Session() as session:
-            return get_data(url, session, retries, timeout)
+            return get_data(in_str, session, retries, timeout)
+
+    if _get_videoid(in_str) is not None:
+        url = in_str
+    else:
+        url = f"https://www.youtube.com/watch?v={in_str}"
 
     end_time = None
     if timeout:
@@ -179,14 +184,16 @@ def get_chat_available(data):
         return False
 
 
-def get_thumbnail(id, format='maxres', session=None, retries=3, timeout=None):
+def get_thumbnail(in_str, format='maxres', session=None, retries=3, timeout=None):
     """
-    Takes a video id and thumbnail format (maxres or hq) and returns the video
+    Takes a video url or id and thumbnail format (maxres or hq) and returns the video
     thumbnail as raw byte data
     """
     if session is None:
         with requests.Session() as session:
-            return get_thumbnail(id, format, session, retries, timeout)
+            return get_thumbnail(in_str, format, session, retries, timeout)
+
+    id = _get_videoid(in_str) or in_str
 
     if format == 'maxres':
         url = f"https://i.ytimg.com/vi/{id}/maxresdefault.jpg"
@@ -222,14 +229,21 @@ def get_thumbnail(id, format='maxres', session=None, retries=3, timeout=None):
     raise RetryError(f"Reached maximum retries for {url}")
 
 
-def get_channel_videos(base_url, session=None, retries=3, timeout=None):
+def get_channel_videos(in_str, session=None, retries=3, timeout=None):
     """
     Takes a channel url and returns a list of video ids from the main video
     catalog
     """
     if session is None:
         with requests.Session() as session:
-            return get_channel_videos(base_url, session, retries, timeout)
+            return get_channel_videos(in_str, session, retries, timeout)
+
+    if re.match(r"^@[\w-]+$", in_str):
+        base_url = f"https://www.youtube.com/{in_str}"
+    elif re.match(r"^[\w-]+$", in_str):
+        base_url = f"https://www.youtube.com/channel/{in_str}"
+    else:
+        base_url = in_str
 
     videos = []
 
