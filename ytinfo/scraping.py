@@ -137,13 +137,13 @@ def extract_info(data):
     ret['likes'], ret['dislikes'] = None, None
     content = str(dict_tryget(idata ,'contents','twoColumnWatchNextResults',
         'results','results','contents'))
-    pat = "['\"]label['\"]\s*:\s*['\"]([\d,\.]+|No)\s+%s['\"]"
+    pat = "['\"]label['\"]\\s*:\\s*['\"]([\\d,\\.]+|No)\\s+%s['\"]"
     m = re.search(pat % 'likes', content)
     if m:
-        ret['likes'] = 0 if m[1]=='No' else int(re.sub("[,\.]", '', m[1]))
+        ret['likes'] = 0 if m[1] == 'No' else int(re.sub("[,\\.]", '', m[1]))
     m = re.search(pat % 'dislikes', content)
     if m:
-        ret['dislikes'] = 0 if m[1]=='No' else int(re.sub("[,\.]", '', m[1]))
+        ret['dislikes'] = 0 if m[1] == 'No' else int(re.sub("[,\\.]", '', m[1]))
 
     ret['unlisted'] = dict_tryget(microformat, 'isUnlisted')
     ret['category'] = dict_tryget(microformat, 'category')
