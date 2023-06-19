@@ -18,11 +18,24 @@ def get_info(url, session=None, retries=3, timeout=None):
 
 
 def _extract_initial_player_response(text):
-    return re.search(r"(?:window\s*\[\s*[\"']ytInitialPlayerResponse[\"']\s*\]|ytInitialPlayerResponse)\s*=\s*({.+?})\s*;", text)
+    m = re.search(
+        r"(?:window\s*\[\s*[\"']ytInitialPlayerResponse[\"']\s*\]|ytInitialPlayerResponse)\s*=\s*({.+?})\s*;", text)
+    if m is not None:
+        return json.loads(m[1])
 
 
 def _extract_initial_data(text):
-    return re.search(r"(?:window\s*\[\s*[\"']ytInitialData[\"']\s*\]|ytInitialData)\s*=\s*({.+?})\s*;", text)
+    m = re.search(
+        r"(?:window\s*\[\s*[\"']ytInitialData[\"']\s*\]|ytInitialData)\s*=\s*({.+?})\s*;", text)
+    if m is not None:
+        return json.loads(m[1])
+
+
+def _get_videoid(url):
+    m = re.search(
+        r"https?://(?:www\.youtube\.com/watch\?v=|youtu\.be/)([\w-]+)", url)
+    if m is not None:
+        return m[1]
 
 
 def get_data(url, session=None, retries=3, timeout=None):
@@ -61,9 +74,6 @@ def get_data(url, session=None, retries=3, timeout=None):
             logger.warning(f"Errors on page for {url}")
             continue
 
-        initial_player_response = json.loads(initial_player_response[1])
-        initial_data = json.loads(initial_data[1])
-
         return {'url': url,
                 'ytInitialPlayerResponse': initial_player_response,
                 'ytInitialData': initial_data}
@@ -97,8 +107,7 @@ def extract_info(data):
     ret['timestamp'] = datetime.utcnow().isoformat()
 
     if ret['status'] in ['ERROR', 'PRIVATE']:
-        ret['id'] = re.search(r"https?://(www\.youtube\.com/watch\?v=|youtu\.be/)(?P<videoid>[\w-]+)",
-                              data['url']).group('videoid')
+        ret['id'] = _get_videoid(data['url'])
         return ret
 
     ipr = data['ytInitialPlayerResponse']
@@ -113,8 +122,10 @@ def extract_info(data):
     ret['title'] = details['title']
     ret['description'] = details['shortDescription']
     ret['length'] = details['lengthSeconds']
-    ret['publish_date'] = microformat['publishDate']
-    ret['upload_date'] = microformat['uploadDate']
+
+    if microformat is not None:
+        ret['publish_date'] = microformat['publishDate']
+        ret['upload_date'] = microformat['uploadDate']
 
     ret['live_content'] = details['isLiveContent']
     ret['chat_available'] = get_chat_available(data)
@@ -130,9 +141,10 @@ def extract_info(data):
     chapters = dict_tryget(idata, 'playerOverlays', 'playerOverlayRenderer',
                            'decoratedPlayerBarRenderer', 'decoratedPlayerBarRenderer',
                            'playerBar', 'chapteredPlayerBarRenderer', 'chapters', default=[])
-    ret['chapters'] = [{'title': c['chapterRenderer']['title']['simpleText'],
-                        'starttime': c['chapterRenderer']['timeRangeStartMillis']} for
-                       c in chapters]
+    if chapters is not None:
+        ret['chapters'] = [{'title': c['chapterRenderer']['title']['simpleText'],
+                            'starttime': c['chapterRenderer']['timeRangeStartMillis']} for
+                           c in chapters]
 
     # likes and dislikes
     ret['likes'], ret['dislikes'] = None, None
@@ -144,7 +156,8 @@ def extract_info(data):
         ret['likes'] = 0 if m[1] == 'No' else int(re.sub("[,\\.]", '', m[1]))
     m = re.search(pat % 'dislikes', content)
     if m:
-        ret['dislikes'] = 0 if m[1] == 'No' else int(re.sub("[,\\.]", '', m[1]))
+        ret['dislikes'] = 0 if m[1] == 'No' else int(
+            re.sub("[,\\.]", '', m[1]))
 
     ret['unlisted'] = dict_tryget(microformat, 'isUnlisted')
     ret['category'] = dict_tryget(microformat, 'category')
@@ -244,7 +257,12 @@ def get_channel_videos(base_url, session=None, retries=3, timeout=None):
         else:
             raise RetryError(f"Reached maximum retries for {url}")
 
-        data = json.loads(_extract_initial_data(response.text)[1])
+        data = _extract_initial_data(response.text)
+        # check for malformed data
+        if data is None:
+            logger.warning(f"Errors on page for {url}")
+            continue
+
         tabs = data['contents']['twoColumnBrowseResultsRenderer']['tabs']
 
         for tab in tabs:
