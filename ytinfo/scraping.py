@@ -1,4 +1,5 @@
-import re, json
+import re
+import json
 import requests
 import time
 from datetime import datetime
@@ -19,8 +20,10 @@ def get_info(url, session=None, retries=3, timeout=None):
 def _extract_initial_player_response(text):
     return re.search(r"(?:window\s*\[\s*[\"']ytInitialPlayerResponse[\"']\s*\]|ytInitialPlayerResponse)\s*=\s*({.+?})\s*;", text)
 
+
 def _extract_initial_data(text):
     return re.search(r"(?:window\s*\[\s*[\"']ytInitialData[\"']\s*\]|ytInitialData)\s*=\s*({.+?})\s*;", text)
+
 
 def get_data(url, session=None, retries=3, timeout=None):
     """
@@ -43,14 +46,15 @@ def get_data(url, session=None, retries=3, timeout=None):
             remaining_time = None
 
         response = session.get(url,
-                            headers={'accept-language': "en-US,en;q=0.9"},
-                            timeout=remaining_time)
+                               headers={'accept-language': "en-US,en;q=0.9"},
+                               timeout=remaining_time)
 
         if response.status_code != 200:
             logger.warning(f"Got status code {response.status_code} for {url}")
             continue
 
-        initial_player_response = _extract_initial_player_response(response.text)
+        initial_player_response = _extract_initial_player_response(
+            response.text)
         initial_data = _extract_initial_data(response.text)
         # check for malformed data
         if initial_player_response is None or initial_data is None:
@@ -94,15 +98,14 @@ def extract_info(data):
 
     if ret['status'] in ['ERROR', 'PRIVATE']:
         ret['id'] = re.search(r"https?://(www\.youtube\.com/watch\?v=|youtu\.be/)(?P<videoid>[\w-]+)",
-                            data['url']).group('videoid')
+                              data['url']).group('videoid')
         return ret
 
     ipr = data['ytInitialPlayerResponse']
     details = ipr['videoDetails']
     idata = data['ytInitialData']
     microformat = dict_tryget(ipr, 'microformat', 'playerMicroformatRenderer') or \
-                dict_tryget(ipr, 'microformat', 'microformatDataRenderer')
-
+        dict_tryget(ipr, 'microformat', 'microformatDataRenderer')
 
     ret['id'] = details['videoId']
     ret['author'] = details['author']
@@ -118,25 +121,23 @@ def extract_info(data):
     ret['average_rating'] = dict_tryget(details, 'averageRating')
     ret['views'] = details['viewCount']
 
-    ret['family_safe'] = dict_tryget(microformat ,'isFamilySafe')
+    ret['family_safe'] = dict_tryget(microformat, 'isFamilySafe')
 
     # keywords
     ret['keywords'] = dict_tryget(details, 'keywords', default=[])
 
-
     # get chapters
     chapters = dict_tryget(idata, 'playerOverlays', 'playerOverlayRenderer',
-        'decoratedPlayerBarRenderer','decoratedPlayerBarRenderer',
-        'playerBar','chapteredPlayerBarRenderer','chapters', default=[])
+                           'decoratedPlayerBarRenderer', 'decoratedPlayerBarRenderer',
+                           'playerBar', 'chapteredPlayerBarRenderer', 'chapters', default=[])
     ret['chapters'] = [{'title': c['chapterRenderer']['title']['simpleText'],
-        'starttime': c['chapterRenderer']['timeRangeStartMillis']} for
-        c in chapters]
-
+                        'starttime': c['chapterRenderer']['timeRangeStartMillis']} for
+                       c in chapters]
 
     # likes and dislikes
     ret['likes'], ret['dislikes'] = None, None
-    content = str(dict_tryget(idata ,'contents','twoColumnWatchNextResults',
-        'results','results','contents'))
+    content = str(dict_tryget(idata, 'contents', 'twoColumnWatchNextResults',
+                              'results', 'results', 'contents'))
     pat = "['\"]label['\"]\\s*:\\s*['\"]([\\d,\\.]+|No)\\s+%s['\"]"
     m = re.search(pat % 'likes', content)
     if m:
@@ -149,8 +150,10 @@ def extract_info(data):
     ret['category'] = dict_tryget(microformat, 'category')
 
     # only for live streams
-    ret['start_time'] = dict_tryget(microformat, 'liveBroadcastDetails','startTimestamp')
-    ret['end_time'] = dict_tryget(microformat, 'liveBroadcastDetails','endTimestamp')
+    ret['start_time'] = dict_tryget(
+        microformat, 'liveBroadcastDetails', 'startTimestamp')
+    ret['end_time'] = dict_tryget(
+        microformat, 'liveBroadcastDetails', 'endTimestamp')
 
     return ret
 
@@ -252,49 +255,51 @@ def get_channel_videos(base_url, session=None, retries=3, timeout=None):
                 continuation = None
                 for item in items:
                     if 'continuationItemRenderer' not in item:
-                        videos.append(item['richItemRenderer']['content']['videoRenderer']['videoId'])
+                        videos.append(item['richItemRenderer']
+                                      ['content']['videoRenderer']['videoId'])
                     else:
                         continuation = item
 
                 # get succeeding pages
                 while continuation is not None:
-                    token = continuation['continuationItemRenderer']['continuationEndpoint']\
-                                        ['continuationCommand']['token']
+                    token = continuation['continuationItemRenderer']['continuationEndpoint']['continuationCommand']['token']
                     if end_time is not None:
                         remaining_time = end_time - time.monotonic()
                         if remaining_time <= 0:
-                            raise TimeoutError(f"Timed out while loading {url}")
+                            raise TimeoutError(
+                                f"Timed out while loading {url}")
                     else:
                         remaining_time = None
 
                     response = session.post("https://www.youtube.com/youtubei/v1/browse",
-                        headers={
-                            'content-type': 'application/json',
-                            'x-youtube-client-name': '1',
-                            'x-youtube-client-version': '2.20230613.01.00'
-                        },
-                        params={
-                            'key': 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8',
-                            'prettyPrint': 'false',
-                        },
-                        json={
-                            'context': {
-                                'client': {
-                                    'clientName': 'WEB',
-                                    'clientVersion': '2.20230613.01.00'
-                                }
-                            },
-                            'continuation': token,
-                        },
-                        timeout=remaining_time)
+                                            headers={
+                                                'content-type': 'application/json',
+                                                'x-youtube-client-name': '1',
+                                                'x-youtube-client-version': '2.20230613.01.00'
+                                            },
+                                            params={
+                                                'key': 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8',
+                                                'prettyPrint': 'false',
+                                            },
+                                            json={
+                                                'context': {
+                                                    'client': {
+                                                        'clientName': 'WEB',
+                                                        'clientVersion': '2.20230613.01.00'
+                                                    }
+                                                },
+                                                'continuation': token,
+                                            },
+                                            timeout=remaining_time)
 
-                    items = json.loads(response.text)['onResponseReceivedActions'][0]\
-                        ['appendContinuationItemsAction']['continuationItems']
+                    items = json.loads(response.text)[
+                        'onResponseReceivedActions'][0]['appendContinuationItemsAction']['continuationItems']
 
                     continuation = None
                     for item in items:
                         if 'continuationItemRenderer' not in item:
-                            videos.append(item['richItemRenderer']['content']['videoRenderer']['videoId'])
+                            videos.append(
+                                item['richItemRenderer']['content']['videoRenderer']['videoId'])
                         else:
                             continuation = item
 

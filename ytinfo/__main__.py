@@ -8,7 +8,8 @@ if __name__ == "__main__":
     _parser = subparsers.add_parser('getinfo', help="Get video info")
     _parser.add_argument('url', help="Video URL")
 
-    _parser = subparsers.add_parser('getchannelvideos', help="Get list of channel videos")
+    _parser = subparsers.add_parser(
+        'getchannelvideos', help="Get list of channel videos")
     _parser.add_argument('channelid', help="Channel ID")
 
     _parser = subparsers.add_parser('getthumbnail', help="Get video thumbnail")
@@ -16,7 +17,7 @@ if __name__ == "__main__":
     _parser.add_argument('filename', help="Output filename")
 
     args = parser.parse_args()
-    
+
     if args.subcommand == 'getinfo':
         import json
         data = get_data(args.url)
@@ -30,4 +31,3 @@ if __name__ == "__main__":
         img = get_thumbnail(args.videoid, format='maxres')
         with open(args.filename, 'wb') as f:
             f.write(img)
-
