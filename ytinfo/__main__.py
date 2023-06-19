@@ -18,13 +18,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.subcommand == 'getinfo':
+        import json
         data = get_data(args.url)
         videoinfo = extract_info(data)
-        print(videoinfo)
+        print(json.dumps(videoinfo, ensure_ascii=False, indent=4))
     elif args.subcommand == 'getchannelvideos':
         url = "https://www.youtube.com/channel/" + args.channelid
         videoids = get_channel_videos(url)
-        print(videoids)
+        print("\n".join(videoids))
     elif args.subcommand == 'getthumbnail':
         img = get_thumbnail(args.videoid, format='maxres')
         with open(args.filename, 'wb') as f:
