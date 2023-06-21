@@ -202,7 +202,6 @@ def get_thumbnail(in_str, format='maxres', session=None, retries=3, timeout=None
 
     if format == 'maxres':
         url = f"https://i.ytimg.com/vi/{id}/maxresdefault.jpg"
-        # maxres is only available for premiere-released videos and live streams
     elif format == 'hq':
         url = f"https://i.ytimg.com/vi/{id}/hqdefault.jpg"
     else:
