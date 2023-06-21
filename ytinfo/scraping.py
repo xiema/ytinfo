@@ -247,10 +247,7 @@ def get_channel_videos(in_str, session=None, retries=3, timeout=None):
 
     videos = []
 
-    for url in [
-        base_url + "/videos",
-        base_url + "/streams"
-    ]:
+    for url in [f"{base_url}/videos", f"{base_url}/streams", f"{base_url}/shorts"]:
 
         end_time = None
         if timeout:
@@ -287,8 +284,9 @@ def get_channel_videos(in_str, session=None, retries=3, timeout=None):
                 continuation = None
                 for item in items:
                     if 'continuationItemRenderer' not in item:
-                        videos.append(item['richItemRenderer']
-                                      ['content']['videoRenderer']['videoId'])
+                        video_id = dict_tryget(item, 'richItemRenderer', 'content', 'videoRenderer', 'videoId') or dict_tryget(
+                            item, 'richItemRenderer', 'content', 'reelItemRenderer', 'videoId')
+                        videos.append(video_id)
                     else:
                         continuation = item
 
