@@ -46,10 +46,10 @@ def get_data(in_str, session=None, retries=3, timeout=None):
         with requests.Session() as session:
             return get_data(in_str, session, retries, timeout)
 
-    if _get_videoid(in_str) is not None:
-        url = in_str
-    else:
+    if re.search(r"^[\w-]+$", in_str) is not None:
         url = f"https://www.youtube.com/watch?v={in_str}"
+    else:
+        url = in_str
 
     end_time = None
     if timeout:
@@ -193,7 +193,12 @@ def get_thumbnail(in_str, format='maxres', session=None, retries=3, timeout=None
         with requests.Session() as session:
             return get_thumbnail(in_str, format, session, retries, timeout)
 
-    id = _get_videoid(in_str) or in_str
+    if re.search(r"^[\w-]+$", in_str):
+        id = in_str
+    else:
+        id = _get_videoid(in_str)
+        if id is None:
+            raise Error(f"Invalid input string: {in_str}")
 
     if format == 'maxres':
         url = f"https://i.ytimg.com/vi/{id}/maxresdefault.jpg"
